@@ -688,155 +688,16 @@ results_B_clean$Protein <- rownames(results_B_clean)
 
 head(results_A_clean)
 head(results_B_clean)
-```
-
-## Top 50 up and down regulated genes after IG removal
-
-```{r}
-# plex A
-# top 50 up
-top50_up_A <- results_A_clean %>%
-  dplyr::filter(!is.na(logFC) & !is.na(P.Value) & logFC > 0) %>%
-  dplyr::arrange(P.Value) %>%
-  dplyr::slice_head(n = 50)
-
-# top 50 down
-top50_down_A <- results_A_clean %>%
-  dplyr::filter(!is.na(logFC) & !is.na(P.Value) & logFC < 0) %>%
-  dplyr::arrange(P.Value) %>%
-  dplyr::slice_head(n = 50)
-
-# Plex B
-# Top 50 UP
-top50_up_B <- results_B_clean %>%
-  dplyr::filter(!is.na(logFC) & !is.na(P.Value) & logFC > 0) %>%
-  dplyr::arrange(P.Value) %>%
-  dplyr::slice_head(n = 50)
-# Top 50 down
-top50_down_B <- results_B_clean %>%
-  dplyr::filter(!is.na(logFC) & !is.na(P.Value) & logFC < 0) %>%
-  dplyr::arrange(P.Value) %>%
-  dplyr::slice_head(n = 50)
-
-up_A <- top50_up_A$Protein
-down_A <- top50_down_A$Protein
-
-up_B <- top50_up_B$Protein
-down_B <- top50_down_B$Protein
-
-# Up overlap
-common_up <- intersect(up_A, up_B)
-
-# Down overlap
-common_down <- intersect(down_A, down_B)
-
-# Print counts
-cat("Common UP proteins:", length(common_up), "\n")
-cat("Common DOWN proteins:", length(common_down), "\n")
-
-library(eulerr)
-
-# UP proteins Euler
-fit_up <- euler(list(
-  "Plex A Up" = up_A,
-  "Plex B Up" = up_B
-))
-
-plot(fit_up,
-     fills = c("#4CAF50", "#2196F3"),
-     alpha = 0.6,
-     quantities = TRUE,
-     main = "Top 50 Upregulated Proteins Overlap")
-
-# down regulated
-fit_down <- euler(list(
-  "Plex A Down" = down_A,
-  "Plex B Down" = down_B
-))
-
-plot(fit_down,
-     fills = c("#FF7043", "#AB47BC"),
-     alpha = 0.6,
-     quantities = TRUE,
-     main = "Top 50 Downregulated Proteins Overlap")
-```
-
-## Pathway Enrichment
-
-```{r}
-results_A_clean$gene <- str_extract(results_A_clean$Protein, "(?<=\\|)[A-Z0-9]+(?=_HUMAN)")
-results_B_clean$gene <- str_extract(results_B_clean$Protein, "(?<=\\|)[A-Z0-9]+(?=_HUMAN)")
-
-# Plex A CLEAN
-rank_A_clean <- results_A_clean %>%
-  dplyr::select(gene, logFC) %>%
-  filter(!is.na(gene)) %>%
-  group_by(gene) %>%
-  summarise(logFC = mean(logFC), .groups = "drop")
-
-gene_list_A_clean <- rank_A_clean$logFC
-names(gene_list_A_clean) <- rank_A_clean$gene
-
-df_A_clean <- data.frame(logFC = gene_list_A_clean)
-
-# run mitch
-mitch_A_clean <- mitch_calc(df_A_clean, reactome_sets, minsetsize = 10)
-
-res_mitch_A_clean <- mitch_A_clean$enrichment_result %>%
-  as.data.frame() %>%
-  dplyr::arrange(p.adjustANOVA)
-
-# Plex B
-rank_B_clean <- results_B_clean %>%
-  dplyr::select(gene, logFC) %>%
-  filter(!is.na(gene)) %>%
-  group_by(gene) %>%
-  summarise(logFC = mean(logFC), .groups = "drop")
-
-gene_list_B_clean <- rank_B_clean$logFC
-names(gene_list_B_clean) <- rank_B_clean$gene
-
-df_B_clean <- data.frame(logFC = gene_list_B_clean)
-
-mitch_B_clean <- mitch_calc(df_B_clean, reactome_sets, minsetsize = 10)
-
-res_mitch_B_clean <- mitch_B_clean$enrichment_result %>%
-  as.data.frame() %>%
-  dplyr::arrange(p.adjustANOVA)
-
-
-
-go_A_clean <- enrichGO(
-  gene = names(gene_list_A_clean),
-  OrgDb = org.Hs.eg.db,
-  keyType = "SYMBOL",
-  ont = "BP",
-  pAdjustMethod = "BH",
-  pvalueCutoff = 0.05,
-  readable = TRUE
-)
-
-go_A_clean_df <- as.data.frame(go_A_clean)
-
-top_mitch_A <- res_mitch_A_clean %>%
-  arrange(p.adjustANOVA) %>%
-  slice_head(n = 20)
-
-kable(top_mitch_A, 
-      caption = "Top Reactome Pathways (Plex A - IG Removed)")
-
-top_mitch_B <- res_mitch_B_clean %>%
-  arrange(p.adjustANOVA) %>%
-  slice_head(n = 20)
-
-kable(top_mitch_B, 
-      caption = "Top Reactome Pathways (Plex B - IG Removed)")
 
 ```
 
 ## Session Info
+
 ```{r}
+
 sessionInfo()
+
 save.image("Analysis2.rdata")
+
 ```
 
