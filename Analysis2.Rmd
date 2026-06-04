@@ -32,8 +32,10 @@ library(knitr)
 library(mitch)
 library(stringr)
 library(msigdbr)
-library(eulerr)
 library(beeswarm)
+library("kableExtra")
+library("eulerr")
+
 ```
 
 ## 3. Load files
@@ -439,69 +441,11 @@ ggplot(pca_post_df, aes(x = PC1, y = PC2, color = Group, shape = Plex)) +
 ```
 
 ## Differential Expression Analysis
-```{r}
-# 1. PLEX A
-design_A <- model.matrix(~ Group, data = meta_A)
-fit_A <- lmFit(expr_A_imp, design_A)
-fit_A <- eBayes(fit_A)
-results_A <- topTable(
-  fit_A,
-  coef = "GroupCase",
-  number = Inf,
-  sort.by = "P"
-)
-results_A$Protein <- rownames(results_A)
-# Add gene annotation
-results_A <- merge(
-  results_A,
-  protein_info_A,
-  by.x = "Protein",
-  by.y = "protein",
-  all.x = TRUE
-)
-# Add significance labels
-results_A$Significance <- "Not Significant"
-results_A$Significance[
-  results_A$adj.P.Val < 0.05 & results_A$logFC > 1
-] <- "Upregulated"
-results_A$Significance[
-  results_A$adj.P.Val < 0.05 & results_A$logFC < -1
-] <- "Downregulated"
-# View
-head(results_A)
 
-# 2. PLEX B
-design_B <- model.matrix(~ Group, data = meta_B)
-fit_B <- lmFit(expr_B_imp, design_B)
-fit_B <- eBayes(fit_B)
-results_B <- topTable(
-  fit_B,
-  coef = "GroupCase",
-  number = Inf,
-  sort.by = "P"
-)
-results_B$Protein <- rownames(results_B)
-# Add gene annotation
-results_B <- merge(
-  results_B,
-  protein_info_B,
-  by.x = "Protein",
-  by.y = "protein",
-  all.x = TRUE
-)
-# Add significance labels
-results_B$Significance <- "Not Significant"
-results_B$Significance[
-  results_B$adj.P.Val < 0.05 & results_B$logFC > 1
-] <- "Upregulated"
-results_B$Significance[
-  results_B$adj.P.Val < 0.05 & results_B$logFC < -1
-] <- "Downregulated"
-# View
-head(results_B)
+### Combined plexes
 
+```{r,de_combined}
 
-# 3. Combined Plex
 design_combined <- model.matrix(~ Plex + Group, data = meta_combined)
 fit_combined <- lmFit(expr_combined_imp, design_combined)
 fit_combined <- eBayes(fit_combined)
@@ -530,352 +474,178 @@ results_combined$Significance[
   results_combined$adj.P.Val < 0.05 & results_combined$logFC < -1
 ] <- "Downregulated"
 # View
-head(results_combined)
+
+results_combined <- results_combined[order(results_combined$P.Value),]
+
+head(results_combined) |>
+    kbl(caption = "Top ranked proteins by p-value") |>
+    kable_paper("hover", full_width = F))
+
 ```
 
+## Separate plexes
 
-# Overlap between Plex A and B Differentially Expressed Proteins Based On significance
+Analyse plex A and plex B.
 
-```{r}
-# Significant Proteins
-sig_A <- results_A %>%
-  dplyr::filter(adj.P.Val < 0.05) %>%
-  dplyr::select(Protein, gene, logFC, adj.P.Val)
+```{r,de_plex_A}
 
-sig_B <- results_B %>%
-  dplyr::filter(adj.P.Val < 0.05) %>%
-  dplyr::select(Protein, gene, logFC, adj.P.Val)
+design_A <- model.matrix(~ Group, data = meta_A)
+fit_A <- lmFit(expr_A_imp, design_A)
+fit_A <- eBayes(fit_A)
+results_A <- topTable(
+  fit_A,
+  coef = "GroupCase",
+  number = Inf,
+  sort.by = "P"
+)
+results_A$Protein <- rownames(results_A)
+# Add gene annotation
+results_A <- merge(
+  results_A,
+  protein_info_A,
+  by.x = "Protein",
+  by.y = "protein",
+  all.x = TRUE
+)
 
-#Shared proteins between plexes
-shared_proteins <- intersect(sig_A$Protein, sig_B$Protein)
+# Add significance labels
+results_A$Significance <- "Not Significant"
+results_A$Significance[
+  results_A$adj.P.Val < 0.05 & results_A$logFC > 1
+] <- "Upregulated"
+results_A$Significance[
+  results_A$adj.P.Val < 0.05 & results_A$logFC < -1
+] <- "Downregulated"
 
-shared_table <- sig_A %>%
-  dplyr::filter(Protein %in% shared_proteins) %>%
-  dplyr::rename(logFC_A = logFC, adjP_A = adj.P.Val) %>%
-  dplyr::left_join(
-    sig_B %>%
-      dplyr::rename(logFC_B = logFC, adjP_B = adj.P.Val),
-    by = "Protein"
-  )
+# View
+results_A <- results_A[order(results_A$P.Value),]
 
-# Plex A
-unique_A <- setdiff(sig_A$Protein, sig_B$Protein)
+head(results_combined) |>
+    kbl(caption = "Top ranked proteins by p-value in plex A") |>
+    kable_paper("hover", full_width = F))
 
-sig_A_only <- sig_A %>%
-  dplyr::filter(Protein %in% unique_A)
+head(results_A)
 
-# Plex B
-unique_B <- setdiff(sig_B$Protein, sig_A$Protein)
+```
 
-sig_B_only <- sig_B %>%
-  dplyr::filter(Protein %in% unique_B)
+Plex B.
 
-cat("Significant proteins in Plex A:", nrow(sig_A), "\n")
-cat("Significant proteins in Plex B:", nrow(sig_B), "\n")
-cat("Shared significant proteins:", length(shared_proteins), "\n")
-cat("Unique to Plex A:", length(unique_A), "\n")
-cat("Unique to Plex B:", length(unique_B), "\n")
+```{r,de_plex_B}
 
-kable(shared_table, caption = "Shared Significant Proteins (Plex A vs Plex B)")
-kable(sig_A_only, caption = "Plex A Only Significant Proteins")
-kable(sig_B_only, caption = "Plex B Only Significant Proteins")
+design_B <- model.matrix(~ Group, data = meta_B)
+fit_B <- lmFit(expr_B_imp, design_B)
+fit_B <- eBayes(fit_B)
+results_B <- topTable(
+  fit_B,
+  coef = "GroupCase",
+  number = Inf,
+  sort.by = "P"
+)
+results_B$Protein <- rownames(results_B)
+# Add gene annotation
+results_B <- merge(
+  results_B,
+  protein_info_B,
+  by.x = "Protein",
+  by.y = "protein",
+  all.x = TRUE
+)
+# Add significance labels
+results_B$Significance <- "Not Significant"
+results_B$Significance[
+  results_B$adj.P.Val < 0.05 & results_B$logFC > 1
+] <- "Upregulated"
+results_B$Significance[
+  results_B$adj.P.Val < 0.05 & results_B$logFC < -1
+] <- "Downregulated"
+
+# View
+results_B <- results_B[order(results_B$P.Value),]
+
+head(results_combined) |>
+    kbl(caption = "Top ranked proteins by p-value in plex B") |>
+    kable_paper("hover", full_width = F))
+
+head(results_B)
+
+
+```
+
+## Comparison of Plex A and B results
+
+The top 50 up and down regulated proteins are selected from Plex A and B and these lists were compared.
+
+
+```{r,compare_A_B}
+
+plexA_up <- head(subset(results_A,logFC>0),50)[,1]
+plexA_dn <- head(subset(results_A,logFC<0),50)[,1]
+plexB_up <- head(subset(results_B,logFC>0),50)[,1]
+plexB_dn <- head(subset(results_B,logFC<0),50)[,1]
+
+v1 <- list("A up"=plexA_up, "A dn"=plexA_dn, "B up"=plexB_up, "B dn"=plexB_dn)
+
+plot(euler(v1), quantities = TRUE)
+
+intersect(plexA_up,plexB_up)
+
+intersect(plexA_dn,plexB_dn)
+
+intersect(plexA_up,plexB_dn)
+
+intersect(plexB_up,plexA_dn)
+
 ```
 
 ## Ranking of proteins by logFC
-```{r}
-# Plex A (up-regulated)
-results_A <- as.data.frame(results_A)
-results_B <- as.data.frame(results_B)
 
-results_A$logFC <- as.numeric(results_A$logFC)
-results_B$logFC <- as.numeric(results_B$logFC)
+```{r,rank_analysis}
 
-topUp_A <- results_A[order(results_A$logFC, decreasing = TRUE), ]
-topUp_A <- topUp_A[1:50, ]
+results_A$score <- sign(results_A$logFC) * -log10(results_A$P.Value)
+results_B$score <- sign(results_B$logFC) * -log10(results_B$P.Value)
 
-# Plex B (up-regulated)
-topUp_B <- results_B[order(results_B$logFC, decreasing = TRUE), ]
-topUp_B <- topUp_B[1:50, ]
+results_m <- merge(results_A,results_B,by="Protein")
 
-# Plex A (down-regulated)
-topDown_A <- results_A[order(results_A$logFC, decreasing = FALSE), ]
-topDown_A <- topDown_A[1:50, ]
+ranks_m <- results_m[,c("Protein","score.x","score.y")]
+rownames(ranks_m) <- ranks_m$Protein ; ranks_m$Protein=NULL
+colnames(ranks_m) <- c("Plex A","Plex B")
 
-# Plex B (down-regulated)
-topDown_B <- results_B[order(results_B$logFC, decreasing = FALSE), ]
-topDown_B <- topDown_B[1:50, ]
+plot(ranks_m)
 
-intersect(topUp_A$Protein, topUp_B$Protein)
-intersect(topDown_A$Protein, topDown_B$Protein)
-
-# Rank consistency plot
-common <- intersect(results_A$Protein, results_B$Protein)
-
-rank_df <- data.frame(
-  Protein = common,
-  Rank_A = rank(-results_A$logFC[match(common, results_A$Protein)]),
-  Rank_B = rank(-results_B$logFC[match(common, results_B$Protein)])
-)
-
-cor(rank_df$Rank_A, rank_df$Rank_B)
-```
-
-
-
-
-
-
-
-
-
-## Overlap Of top 50 Up and down regulated genes for plex A and Plex B.
-
-```{r}
-# Plex A - Top 50 UP
-top_A_up <- results_A %>%
-  dplyr::arrange(P.Value) %>%
-  dplyr::filter(logFC > 0) %>%
-  dplyr::slice_head(n = 50)
-
-# Plex A - Top 50 DOWN
-top_A_down <- results_A %>%
-  dplyr::arrange(P.Value) %>%
-  dplyr::filter(logFC < 0) %>%
-  dplyr::slice_head(n = 50)
-
-# Plex B - Top 50 UP
-top_B_up <- results_B %>%
-  dplyr::arrange(P.Value) %>%
-  dplyr::filter(logFC > 0) %>%
-  dplyr::slice_head(n = 50)
-
-# Plex B - Top 50 DOWN
-top_B_down <- results_B %>%
-  dplyr::arrange(P.Value) %>%
-  dplyr::filter(logFC < 0) %>%
-  dplyr::slice_head(n = 50)
-
-A_up <- top_A_up$Protein
-A_down <- top_A_down$Protein
-
-B_up <- top_B_up$Protein
-B_down <- top_B_down$Protein
-
-shared_up <- intersect(A_up, B_up)
-unique_A_up <- setdiff(A_up, B_up)
-unique_B_up <- setdiff(B_up, A_up)
-
-shared_down <- intersect(A_down, B_down)
-unique_A_down <- setdiff(A_down, B_down)
-unique_B_down <- setdiff(B_down, A_down)
-
-cat("UP overlap:\n")
-cat("Shared:", length(shared_up), "\n")
-cat("Unique A:", length(unique_A_up), "\n")
-cat("Unique B:", length(unique_B_up), "\n\n")
-
-cat("DOWN overlap:\n")
-cat("Shared:", length(shared_down), "\n")
-cat("Unique A:", length(unique_A_down), "\n")
-cat("Unique B:", length(unique_B_down), "\n")
-
-fit_up <- euler(c(
-  "Plex A" = length(A_up),
-  "Plex B" = length(B_up),
-  "Plex A&Plex B" = length(shared_up)
-))
-
-plot(fit_up,
-     fills = c("#1f77b4", "#ff7f0e"),
-     labels = TRUE,
-     main = "Top 50 Upregulated Proteins Overlap")
-
-fit_down <- euler(c(
-  "Plex A" = length(A_down),
-  "Plex B" = length(B_down),
-  "Plex A&Plex B" = length(shared_down)
-))
-
-plot(fit_down,
-     fills = c("#2ca02c", "#d62728"),
-     labels = TRUE,
-     main = "Top 50 Downregulated Proteins Overlap")
-```
-
-
-
-
-
-
-
+mylm <- lm(ranks_m$`Plex B` ~ ranks_m$`Plex A`)
+abline(mylm,lwd=2,lty=2,col="red")
+COR=signif(cor(ranks_m),3)[2,1]
+COR
+mtext(paste("Pearson correlation=",COR))
 
 ## Pathway Enrichment Analysis
 
-```{r}
-# Plex A
-rank_A <- results_A %>%
-  dplyr::select(gene, t) %>%
-  filter(!is.na(gene)) %>%
-  group_by(gene) %>%
-  summarise(t = mean(t), .groups = "drop") %>%
-  arrange(desc(t))
+Using the combined protein profiles.
 
-gene_list_A <- rank_A$t
-names(gene_list_A) <- rank_A$gene
+Some of the pathways are known to be involved in CVD.
 
-# Plex B
-rank_B <- results_B %>%
-  dplyr::select(gene, t) %>%
-  filter(!is.na(gene)) %>%
-  group_by(gene) %>%
-  summarise(t = mean(t), .groups = "drop") %>%
-  arrange(desc(t))
+```{r,mitch1}
 
-gene_list_B <- rank_B$t
-names(gene_list_B) <- rank_B$gene
+m <- mitch_import(results_combined,DEtype="limma",geneIDcol="gene")
 
-# Convert to MITCH input format
-df_A <- data.frame(logFC = gene_list_A)
-df_B <- data.frame(logFC = gene_list_B)
+reactome_sets <- gmt_import("ReactomePathways_2026-04-02.gmt")
 
-# Get gene sets (Reactome + GO)
-msig_reactome <- msigdbr(
-  species = "Homo sapiens",
-  category = "C2",
-  subcategory = "CP:REACTOME"
-)
+mres <- mitch_calc(m,  reactome_sets, minsetsize = 5, cores=8)
 
-reactome_sets <- split(msig_reactome$gene_symbol,
-                       msig_reactome$gs_name)
-msig_go <- msigdbr(
-  species = "Homo sapiens",
-  category = "C5",
-  subcategory = "BP"
-)
+head(mres$enrichment_result,10) |>
+    kbl(caption = "Top ranked Reactome pathways by p-value") |>
+    kable_paper("hover", full_width = F))
 
-go_sets <- split(msig_go$gene_symbol,
-                 msig_go$gs_name)
+head(subset(mres$enrichment_result,s.dist>0),10) |>
+    kbl(caption = "Top ranked upregulated Reactome pathways by p-value") |>
+    kable_paper("hover", full_width = F))
 
-# Mitch Plex A
-mitch_A_reactome <- mitch_calc(
-  df_A,
-  reactome_sets,
-  minsetsize = 5
-)
+head(subset(mres$enrichment_result,s.dist<0),10) |>
+    kbl(caption = "Top ranked upregulated Reactome pathways by p-value") |>
+    kable_paper("hover", full_width = F))
 
-res_A_reactome <- mitch_A_reactome$enrichment_result %>%
-  arrange(p.adjustANOVA)
-
-# Mitch plex B
-mitch_B_reactome <- mitch_calc(
-  df_B,
-  reactome_sets,
-  minsetsize = 5
-)
-
-res_B_reactome <- mitch_B_reactome$enrichment_result %>%
-  arrange(p.adjustANOVA)
-
-# Run mitch
-mitch_A_go <- mitch_calc(
-  df_A,
-  go_sets,
-  minsetsize = 5
-)
-
-res_A_go <- mitch_A_go$enrichment_result %>%
-  arrange(p.adjustANOVA)
-
-mitch_B_go <- mitch_calc(
-  df_B,
-  go_sets,
-  minsetsize = 5
-)
-
-res_B_go <- mitch_B_go$enrichment_result %>%
-  arrange(p.adjustANOVA)
-
-# Extract significant pathways
-
-sig_A_reactome <- res_A_reactome %>%
-  filter(p.adjustANOVA < 0.05)
-
-sig_B_reactome <- res_B_reactome %>%
-  filter(p.adjustANOVA < 0.05)
-
-sig_A_go <- res_A_go %>%
-  filter(p.adjustANOVA < 0.05)
-
-sig_B_go <- res_B_go %>%
-  filter(p.adjustANOVA < 0.05)
-
-length(intersect(names(gene_list_A), unlist(reactome_sets)))
-length(intersect(names(gene_list_A), unlist(go_sets)))
-
-head(res_A_reactome, 10)
-head(res_B_reactome, 10)
-
-
-# Common pathways in both plexes
-# Plex A
-A_table <- res_A_reactome %>%
-  dplyr::select(set, setSize, pANOVA, p.adjustANOVA, s.dist) %>%
-  rename_with(~ paste0("A_", .), -set)
-
-# Plex B
-B_table <- res_B_reactome %>%
-  dplyr::select(set, setSize, pANOVA, p.adjustANOVA, s.dist) %>%
-  rename_with(~ paste0("B_", .), -set)
-
-# Merge common pathways
-common_pathways_reactome <- inner_join(A_table, B_table, by = "set")
-
-# Sort by significance
-common_pathways_reactome <- common_pathways_reactome %>%
-  arrange(A_p.adjustANOVA, B_p.adjustANOVA)
-
-kable(common_pathways_reactome)
-
-# Sort by significance
-common_pathways_reactome <- common_pathways_reactome %>%
-  arrange(A_p.adjustANOVA, B_p.adjustANOVA)
-
-```
-
-## Combined Plex Pathwya enrichment
-```{r}
-# combined Plex
-
-rank_combined <- results_combined %>%
-  dplyr::select(gene, t) %>%
-  filter(!is.na(gene)) %>%
-  group_by(gene) %>%
-  summarise(t = mean(t), .groups = "drop") %>%
-  arrange(desc(t))
-
-gene_list_combined <- rank_combined$t
-names(gene_list_combined) <- rank_combined$gene
-
-df_combined <- data.frame(logFC = gene_list_combined)
-
-mitch_combined_reactome <- mitch_calc(
-  df_combined,
-  reactome_sets,
-  minsetsize = 5
-)
-
-
-res_combined_reactome <- 
-  mitch_combined_reactome$enrichment_result %>%
-  arrange(p.adjustANOVA)
-
-sig_combined_reactome <- 
-  res_combined_reactome %>%
-  filter(p.adjustANOVA < 0.05)
-
-head(res_combined_reactome, 20)
-unlink("mitchreport.html")
-mitch_report(mitch_combined_reactome,"mitchreport.html")
+if ( file.exists("mitchreport1.html") ) { unlink("mitchreport1.html") }
+mitch_report(mres,"mitchreport1.html")
 
 ```
 
