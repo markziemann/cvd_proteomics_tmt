@@ -21,24 +21,13 @@ which in the follow up period did not have a CVD event.
 
 ```{r,load-libraries}
 
-library(BiocManager)
-library(dplyr)
-library(tidyverse)
-library(readr)
-library(janitor)
-library(limma)
-library(pheatmap)
-library(clusterProfiler)
-library(org.Hs.eg.db)
-library(ggplot2)
-library(umap)
-library(ReactomePA)
-library(tibble)
-library(knitr)
-library(mitch)
-library(stringr)
-library(msigdbr)
-library(beeswarm)
+library("limma")
+library("mitch")
+
+library("dplyr")
+library("ggplot2")
+library("pheatmap")
+library("janitor")
 library("kableExtra")
 library("eulerr")
 
@@ -386,19 +375,14 @@ expr_B_imp <- expr_B_imp[apply(expr_B_imp, 1, var) != 0, ]
 
 ## Metadata Creation
 
-```{r}
-############################################
-# METADATA CREATION (SINGLE SOURCE OF TRUTH)
-############################################
+```{r,metadata}
 
 # Create combined metadata from expression matrix
 meta_combined <- data.frame(
   Sample = colnames(expr_combined_imp)
 )
 
-############################################
 # Define Plex (based on known Plex A samples)
-############################################
 
 plexA_samples <- c(
   "19191","34629","34862","40431","40475","35038",
@@ -410,9 +394,7 @@ meta_combined$Plex <- ifelse(meta_combined$Sample %in% plexA_samples,
 
 meta_combined$Plex <- factor(meta_combined$Plex)
 
-############################################
 # Define biological group (Case vs Control)
-############################################
 
 case_samples <- c(
   "19191","40797","34862","103376","40475","47442",
@@ -425,37 +407,23 @@ meta_combined$Group <- ifelse(meta_combined$Sample %in% case_samples,
 meta_combined$Group <- factor(meta_combined$Group,
                               levels = c("Control","Case"))
 
-############################################
 # Final formatting
-############################################
 
 rownames(meta_combined) <- meta_combined$Sample
 
-############################################
 # Create Plex-specific metadata (CORRECT WAY)
-############################################
-
 meta_A <- meta_combined[meta_combined$Plex == "A", ]
 meta_B <- meta_combined[meta_combined$Plex == "B", ]
 
-############################################
 # Align with expression matrices (CRITICAL)
-############################################
-
 meta_A <- meta_A[colnames(expr_A_imp), ]
 meta_B <- meta_B[colnames(expr_B_imp), ]
 
-############################################
 # Keep only needed columns
-############################################
-
 meta_A <- meta_A[, c("Sample","Group")]
 meta_B <- meta_B[, c("Sample","Group")]
 
-############################################
 # SANITY CHECKS (DO NOT SKIP)
-############################################
-
 # Alignment
 all(rownames(meta_A) == colnames(expr_A_imp))
 all(rownames(meta_B) == colnames(expr_B_imp))
@@ -465,11 +433,13 @@ all(rownames(meta_combined) == colnames(expr_combined_imp))
 table(meta_combined$Plex, meta_combined$Group)
 table(meta_A$Group)
 table(meta_B$Group)
+
 ```
 
 ## PCA Before Batch Correction for combined plexes
 
-```{r}
+```{r, pca1}
+
 pca_pre <- prcomp(t(expr_combined_imp), center = TRUE, scale. = TRUE)
 
 pca_pre_df <- data.frame(
@@ -489,9 +459,10 @@ ggplot(pca_pre_df, aes(x = PC1, y = PC2, color = Plex, shape = Group)) +
        y = "PC2")
 ```
 
-## batch Correction
+## Batch correction
 
-```{r}
+```{r, batch correction}
+
 expr_combined_corrected <- removeBatchEffect(
   expr_combined_imp,
   batch = meta_combined$Plex,
@@ -502,11 +473,13 @@ expr_combined_corrected <- removeBatchEffect(
 head(expr_combined_corrected[,1:5])
 # Dimensions unchanged
 dim(expr_combined_corrected)
+
 ```
 
 ## PCA On Combined Plexes after removing Batch effect
 
-```{r}
+```{r, pca2}
+
 pca_post <- prcomp(t(expr_combined_corrected), center = TRUE, scale. = TRUE)
 
 pca_post_df <- data.frame(
@@ -530,9 +503,14 @@ ggplot(pca_post_df, aes(x = PC1, y = PC2, color = Group, shape = Plex)) +
 
 ### Combined plexes
 
-```{r,de_combined}
+Because batch correction has been done separately, we won't correct for it in the
+statistical model.
 
-design_combined <- model.matrix(~ Plex + Group, data = meta_combined)
+```{r, de_combined}
+
+#design_combined <- model.matrix(~ Plex + Group, data = meta_combined)
+design_combined <- model.matrix(~ Group, data = meta_combined)
+
 fit_combined <- lmFit(expr_combined_imp, design_combined)
 fit_combined <- eBayes(fit_combined)
 results_combined <- topTable(
@@ -569,11 +547,13 @@ head(results_combined) |>
 
 ```
 
+Make sure to do volcano plot, box/beeswarm plot and heatmap.
+
 ## Separate plexes
 
 Analyse plex A and plex B.
 
-```{r,de_plex_A}
+```{r, de_plex_A}
 
 design_A <- model.matrix(~ Group, data = meta_A)
 fit_A <- lmFit(expr_A_imp, design_A)
@@ -606,11 +586,9 @@ results_A$Significance[
 # View
 results_A <- results_A[order(results_A$P.Value),]
 
-head(results_combined) |>
+head(results_A,10) |>
     kbl(caption = "Top ranked proteins by p-value in plex A") |>
     kable_paper("hover", full_width = F)
-
-head(results_A)
 
 ```
 
@@ -648,12 +626,9 @@ results_B$Significance[
 # View
 results_B <- results_B[order(results_B$P.Value),]
 
-head(results_combined) |>
+head(results_B,10) |>
     kbl(caption = "Top ranked proteins by p-value in plex B") |>
     kable_paper("hover", full_width = F)
-
-head(results_B)
-
 
 ```
 
@@ -662,7 +637,7 @@ head(results_B)
 The top 50 up and down regulated proteins are selected from Plex A and B and these lists were compared.
 
 
-```{r,compare_A_B}
+```{r, compare_A_B}
 
 plexA_up <- head(subset(results_A,logFC>0),50)[,1]
 plexA_dn <- head(subset(results_A,logFC<0),50)[,1]
@@ -685,7 +660,7 @@ intersect(plexB_up,plexA_dn)
 
 ## Ranking of proteins by logFC
 
-```{r,rank_analysis}
+```{r, rank_analysis}
 
 results_A$score <- sign(results_A$logFC) * -log10(results_A$P.Value)
 results_B$score <- sign(results_B$logFC) * -log10(results_B$P.Value)
@@ -706,11 +681,73 @@ mtext(paste("Pearson correlation=",COR))
 
 ```
 
+## Cross batch analysis
+
+Look at the proteins that are differentially expressed across batches.
+
+IGHV and IHKV are over-represented.
+
+Would be interesting to look at the composition of these proteins to understand the batch effect better.
+
+```{r,crossbatch}
+
+design_batch <- model.matrix(~ Plex , data = meta_combined)
+
+fit_batch <- lmFit(expr_combined_imp, design_batch)
+
+fit_batch <- eBayes(fit_batch)
+
+summary(decideTests(fit_batch))
+
+results_batch <- topTable(
+  fit_batch,
+  coef = ncol(summary(decideTests(fit_batch))),
+  number = Inf,
+  sort.by = "P"
+)
+
+results_batch$Protein <- rownames(results_batch)
+
+# Add gene annotation
+results_batch <- merge(
+  results_batch,
+  protein_info_combined,
+  by.x = "Protein",
+  by.y = "protein",
+  all.x = TRUE
+)
+
+results_batch <- results_batch[order(results_batch$P.Value),]
+
+head(results_batch,10) |>
+    kbl(caption = "Proteins related to Plex A/B differences.") |>
+    kable_paper("hover", full_width = F)
+
+head(subset(results_batch,logFC>0),20) |>
+    kbl(caption = "Proteins with higher expression in Plex B.") |>
+    kable_paper("hover", full_width = F)
+
+head(subset(results_batch,logFC<0),20) |>
+    kbl(caption = "Proteins with higher expression in Plex A.") |>
+    kable_paper("hover", full_width = F)
+
+```
+
+## PLSDA-batch
+
+```{r,plsda-batch}
+
+
+
+```
+
 ## Pathway Enrichment Analysis
 
 Using the combined protein profiles.
 
 Some of the pathways are known to be involved in CVD.
+
+Can try GOBP as well.
 
 ```{r,mitch1}
 
@@ -737,53 +774,13 @@ mitch_report(mres,"mitchreport1.html")
 
 ```
 
-
-
-
-
-
-
-## IG Filtering
-
-```{r}
-# plex A
-ig_filter_A <- grepl("IG|KV|LV|IGH|IGK|IGL", rownames(expr_A_imp))
-expr_A_clean <- expr_A_imp[!ig_filter_A, ]
-
-# Plex B
-ig_filter_B <- grepl("IG|KV|LV|IGH|IGK|IGL", rownames(expr_B_imp))
-expr_B_clean <- expr_B_imp[!ig_filter_B, ]
-
-# DE For Plex A
-design_A <- model.matrix(~ Group, data = meta_A)
-
-fit_A_clean <- lmFit(expr_A_clean, design_A)
-fit_A_clean <- eBayes(fit_A_clean)
-
-results_A_clean <- topTable(fit_A_clean, number = Inf)
-results_A_clean$Protein <- rownames(results_A_clean)
-
-# DE for Plex B
-design_B <- model.matrix(~ Group, data = meta_B)
-
-fit_B_clean <- lmFit(expr_B_clean, design_B)
-fit_B_clean <- eBayes(fit_B_clean)
-
-results_B_clean <- topTable(fit_B_clean, number = Inf)
-results_B_clean$Protein <- rownames(results_B_clean)
-
-head(results_A_clean)
-head(results_B_clean)
-
-```
-
 ## Session Info
 
-```{r}
+```{r,session}
 
 sessionInfo()
 
-save.image("Analysis2.rdata")
+save.image("analysis4_mz.Rdata")
 
 ```
 
