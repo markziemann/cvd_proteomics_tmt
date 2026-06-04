@@ -24,6 +24,8 @@ which in the follow up period did not have a CVD event.
 library("limma")
 library("mitch")
 
+library("PLSDAbatch")
+
 library("dplyr")
 library("ggplot2")
 library("pheatmap")
@@ -457,6 +459,7 @@ ggplot(pca_pre_df, aes(x = PC1, y = PC2, color = Plex, shape = Group)) +
   labs(title = "PCA Before Batch Correction",
        x = "PC1",
        y = "PC2")
+
 ```
 
 ## Batch correction
@@ -503,13 +506,11 @@ ggplot(pca_post_df, aes(x = PC1, y = PC2, color = Group, shape = Plex)) +
 
 ### Combined plexes
 
-Because batch correction has been done separately, we won't correct for it in the
-statistical model.
+First analysis includes batch correction at the limma step
 
-```{r, de_combined}
+```{r, de_combined1}
 
-#design_combined <- model.matrix(~ Plex + Group, data = meta_combined)
-design_combined <- model.matrix(~ Group, data = meta_combined)
+design_combined <- model.matrix(~ Plex + Group, data = meta_combined)
 
 fit_combined <- lmFit(expr_combined_imp, design_combined)
 fit_combined <- eBayes(fit_combined)
@@ -528,16 +529,38 @@ results_combined <- merge(
   by.y = "protein",
   all.x = TRUE
 )
-# Add significance labels
-results_combined$Significance <- "Not Significant"
 
-results_combined$Significance[
-  results_combined$adj.P.Val < 0.05 & results_combined$logFC > 1
-] <- "Upregulated"
-results_combined$Significance[
-  results_combined$adj.P.Val < 0.05 & results_combined$logFC < -1
-] <- "Downregulated"
-# View
+results_combined <- results_combined[order(results_combined$P.Value),]
+
+head(results_combined) |>
+    kbl(caption = "Top ranked proteins by p-value") |>
+    kable_paper("hover", full_width = F)
+
+```
+
+Batch correction was done separately before limma.
+
+```{r, de_combined2}
+
+design_combined <- model.matrix(~ Group, data = meta_combined)
+
+fit_combined <- lmFit(expr_combined_corrected, design_combined)
+fit_combined <- eBayes(fit_combined)
+results_combined <- topTable(
+  fit_combined,
+  coef = "GroupCase",
+  number = Inf,
+  sort.by = "P"
+)
+results_combined$Protein <- rownames(results_combined)
+# Add gene annotation
+results_combined <- merge(
+  results_combined,
+  protein_info_combined,
+  by.x = "Protein",
+  by.y = "protein",
+  all.x = TRUE
+)
 
 results_combined <- results_combined[order(results_combined$P.Value),]
 
@@ -548,6 +571,56 @@ head(results_combined) |>
 ```
 
 Make sure to do volcano plot, box/beeswarm plot and heatmap.
+
+Volcano plot
+
+```{r,volcano,fig.height=5,fig.width=5}
+
+sig <- subset(results_combined,adj.P.Val<0.05)
+
+plot(results_combined$logFC, -log10(results_combined$P.Value),
+  cex=0.6,pch=19,col="darkgray",
+  xlab="log2 fold change",ylab="-log10(p-value)")
+
+abline(v=0,lty=2,lwd=1)
+points(sig$logFC, -log10(sig$P.Value) , col="red",pch=19,cex=0.7)
+text(sig$logFC+0.015, -log10(sig$P.Value), labels=sig$gene)
+
+```
+
+```{r,maplot,fig.height=5,fig.width=5}
+
+sig <- subset(results_combined,adj.P.Val<0.05)
+
+plot(log10(results_combined$AveExpr),results_combined$logFC,
+  cex=0.6,pch=19,col="darkgray",
+  xlab="log10 basemean",ylab="log2 fold change")
+
+abline(h=0,lty=2,lwd=1)
+points(log10(sig$AveExpr),sig$logFC,col="red",pch=19,cex=0.7)
+text(log10(sig$AveExpr)+0.004,sig$logFC,labels=sig$gene)
+
+```
+
+Beeswarm plot using batch corrected data.
+
+```{r,beeswarm,fig.width=9,fig.height=9}
+
+par(mfrow=c(3,3))
+
+null <- lapply(1:9,function(i) {
+  mygene <- results_combined$gene[i]
+  myprot <- results_combined$Protein[i]
+  mydat <- expr_combined_corrected[which(rownames(expr_combined_corrected) == myprot),]
+  mygroups <- meta_combined[match(names(mydat),meta_combined$Sample),3]
+  ctrl <- mydat[which(mygroups=="Control")]
+  case <- mydat[which(mygroups=="Case")]
+  xl <- list("Ctrl"=ctrl,"Case"=case)
+  boxplot(xl,ylab="Relative protein expression",main=mygene,col="white",cex=0)
+  beeswarm(xl,add=TRUE,cex=1.5,pch=19,col="darkgray")
+} )
+
+```
 
 ## Separate plexes
 
@@ -573,15 +646,6 @@ results_A <- merge(
   by.y = "protein",
   all.x = TRUE
 )
-
-# Add significance labels
-results_A$Significance <- "Not Significant"
-results_A$Significance[
-  results_A$adj.P.Val < 0.05 & results_A$logFC > 1
-] <- "Upregulated"
-results_A$Significance[
-  results_A$adj.P.Val < 0.05 & results_A$logFC < -1
-] <- "Downregulated"
 
 # View
 results_A <- results_A[order(results_A$P.Value),]
@@ -614,14 +678,6 @@ results_B <- merge(
   by.y = "protein",
   all.x = TRUE
 )
-# Add significance labels
-results_B$Significance <- "Not Significant"
-results_B$Significance[
-  results_B$adj.P.Val < 0.05 & results_B$logFC > 1
-] <- "Upregulated"
-results_B$Significance[
-  results_B$adj.P.Val < 0.05 & results_B$logFC < -1
-] <- "Downregulated"
 
 # View
 results_B <- results_B[order(results_B$P.Value),]
@@ -737,7 +793,62 @@ head(subset(results_batch,logFC<0),20) |>
 
 ```{r,plsda-batch}
 
+expr_combined_pl_corr <- PLSDA_batch(
+    X = t(expr_combined_imp),
+    Y.trt = meta_combined$Group, Y.bat = meta_combined$Plex,
+    ncomp.trt = 1, ncomp.bat = 1,
+    mode = "regression"
+)
 
+expr_combined_pl_corr$X.nobatch[1:5,1:7]
+
+expr_combined_pl_corrmx <- t(expr_combined_pl_corr$X.nobatch)
+expr_combined_pl_corrmx[1:6,1:4]
+
+```
+
+## Limma on PLSDA-batch corrected data
+
+```{r,plsda-batch-limma}
+
+# stash the old analysis
+results_combined0 <- results_combined
+
+design_combined <- model.matrix(~ Group, data = meta_combined)
+
+fit_combined <- lmFit(expr_combined_pl_corrmx, design_combined)
+fit_combined <- eBayes(fit_combined)
+results_combined <- topTable(
+  fit_combined,
+  coef = "GroupCase",
+  number = Inf,
+  sort.by = "P"
+)
+results_combined$Protein <- rownames(results_combined)
+# Add gene annotation
+results_combined <- merge(
+  results_combined,
+  protein_info_combined,
+  by.x = "Protein",
+  by.y = "protein",
+  all.x = TRUE
+)
+
+results_combined <- results_combined[order(results_combined$P.Value),]
+
+head(results_combined) |>
+    kbl(caption = "Top ranked proteins by p-value (limma done on PLSDA-batch-corrected data)") |>
+    kable_paper("hover", full_width = F)
+
+```
+
+## Incorporate time-to-event
+
+```{r,time-to-event}
+
+tte <- read.table("time-to-event.tsv",header=TRUE)
+
+meta_combined$timetoevent <- tte[match(meta_combined$Sample,tte$SampleID),"time_to_event"]
 
 ```
 
@@ -771,6 +882,37 @@ head(subset(mres$enrichment_result,s.dist<0),10) |>
 
 if ( file.exists("mitchreport1.html") ) { unlink("mitchreport1.html") }
 mitch_report(mres,"mitchreport1.html")
+
+```
+
+GOBP
+
+```{r,mitch2}
+
+#download.file("https://data.broadinstitute.org/gsea-msigdb/msigdb/release/2026.1.Hs/c5.go.v2026.1.Hs.symbols.gmt",destfile="  c5.go.v2026.1.Hs.symbols.gmt")
+#https://data.broadinstitute.org/gsea-msigdb/msigdb/release/2026.1.Hs/c5.go.bp.v2026.1.Hs.symbols.gmt
+gobp_sets <- gmt_import("c5.go.bp.v2026.1.Hs.symbols.gmt")
+
+names(gobp_sets) <- gsub("GOBP_","",names(gobp_sets))
+
+names(gobp_sets) <- gsub("_"," ",names(gobp_sets))
+
+mres2 <- mitch_calc(m,  gobp_sets, minsetsize = 5, cores=8)
+
+head(mres2$enrichment_result,10) |>
+    kbl(caption = "Top ranked GO sets by p-value") |>
+    kable_paper("hover", full_width = F)
+
+head(subset(mres2$enrichment_result,s.dist>0),10) |>
+    kbl(caption = "Top ranked upregulated GO sets by p-value") |>
+    kable_paper("hover", full_width = F)
+
+head(subset(mres2$enrichment_result,s.dist<0),10) |>
+    kbl(caption = "Top ranked upregulated GO sets by p-value") |>
+    kable_paper("hover", full_width = F)
+
+if ( file.exists("mitchreport2.html") ) { unlink("mitchreport2.html") }
+mitch_report(mres2,"mitchreport2.html")
 
 ```
 
