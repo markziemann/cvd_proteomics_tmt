@@ -618,6 +618,8 @@ COR=signif(cor(ranks_m),3)[2,1]
 COR
 mtext(paste("Pearson correlation=",COR))
 
+```
+
 ## Pathway Enrichment Analysis
 
 Using the combined protein profiles.
