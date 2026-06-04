@@ -479,7 +479,7 @@ results_combined <- results_combined[order(results_combined$P.Value),]
 
 head(results_combined) |>
     kbl(caption = "Top ranked proteins by p-value") |>
-    kable_paper("hover", full_width = F))
+    kable_paper("hover", full_width = F)
 
 ```
 
@@ -522,7 +522,7 @@ results_A <- results_A[order(results_A$P.Value),]
 
 head(results_combined) |>
     kbl(caption = "Top ranked proteins by p-value in plex A") |>
-    kable_paper("hover", full_width = F))
+    kable_paper("hover", full_width = F)
 
 head(results_A)
 
@@ -564,7 +564,7 @@ results_B <- results_B[order(results_B$P.Value),]
 
 head(results_combined) |>
     kbl(caption = "Top ranked proteins by p-value in plex B") |>
-    kable_paper("hover", full_width = F))
+    kable_paper("hover", full_width = F)
 
 head(results_B)
 
@@ -634,15 +634,15 @@ mres <- mitch_calc(m,  reactome_sets, minsetsize = 5, cores=8)
 
 head(mres$enrichment_result,10) |>
     kbl(caption = "Top ranked Reactome pathways by p-value") |>
-    kable_paper("hover", full_width = F))
+    kable_paper("hover", full_width = F)
 
 head(subset(mres$enrichment_result,s.dist>0),10) |>
     kbl(caption = "Top ranked upregulated Reactome pathways by p-value") |>
-    kable_paper("hover", full_width = F))
+    kable_paper("hover", full_width = F)
 
 head(subset(mres$enrichment_result,s.dist<0),10) |>
     kbl(caption = "Top ranked upregulated Reactome pathways by p-value") |>
-    kable_paper("hover", full_width = F))
+    kable_paper("hover", full_width = F)
 
 if ( file.exists("mitchreport1.html") ) { unlink("mitchreport1.html") }
 mitch_report(mres,"mitchreport1.html")
