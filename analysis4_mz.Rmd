@@ -26,12 +26,16 @@ library("mitch")
 
 library("PLSDAbatch")
 
+library("tibble")
+library("tidyr")
+library("readr")
 library("dplyr")
 library("ggplot2")
 library("pheatmap")
 library("janitor")
 library("kableExtra")
 library("eulerr")
+library("beeswarm")
 
 ```
 
@@ -619,6 +623,28 @@ null <- lapply(1:9,function(i) {
   boxplot(xl,ylab="Relative protein expression",main=mygene,col="white",cex=0)
   beeswarm(xl,add=TRUE,cex=1.5,pch=19,col="darkgray")
 } )
+
+```
+
+Now look at the ratio between MAPK1 and INF2.
+
+```{r,ratio1}
+
+prota="sp|P28482|MK01_HUMAN"
+protb="sp|Q27J81|INF2_HUMAN"
+dat_a <- expr_combined_corrected[which(rownames(expr_combined_corrected)==prota),]
+dat_b <- expr_combined_corrected[which(rownames(expr_combined_corrected)==protb),]
+abrat <- dat_a / dat_b
+case_samples <- meta_combined[which(meta_combined$Group=="Case"),"Sample"]
+ctrl_samples <- meta_combined[which(meta_combined$Group=="Control"),"Sample"]
+
+case_dat <- abrat[which(names(abrat) %in% case_samples)]
+ctrl_dat <- abrat[which(names(abrat) %in% ctrl_samples)]
+
+rl <- list("Ctrl"=ctrl_dat, "Case"=case_dat)
+boxplot(rl,ylab="Ratio",main="Ratio MAPK1/INF2",col="white",cex=0)
+beeswarm(rl,add=TRUE,cex=1.5,pch=19,col="darkgray")
+t.test(case_dat,ctrl_dat)
 
 ```
 
